@@ -1,0 +1,126 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ACEest Fitness & Gym - GitHub Actions CI/CD Pipeline
+# Triggers on every push and pull_request to any branch
+# Stages: Lint → Build Docker Image → Run Tests in Container
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: ACEest CI/CD Pipeline
+
+on:
+  push:
+    branches: ["**"]          # Trigger on push to ANY branch
+  pull_request:
+    branches: ["**"]          # Trigger on PR to ANY branch
+
+jobs:
+
+  # ── Stage 1: Lint ────────────────────────────────────────────────────────────
+  lint:
+    name: "Stage 1 · Lint & Syntax Check"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run flake8 linter
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 app.py test_app.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Treat all remaining warnings as errors (max line length 120)
+          flake8 app.py test_app.py --count --max-line-length=120 --statistics
+
+  # ── Stage 2: Build Docker Image ───────────────────────────────────────────────
+  docker-build:
+    name: "Stage 2 · Docker Image Assembly"
+    runs-on: ubuntu-latest
+    needs: lint                # Only runs if lint passes
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          docker build -t aceest-fitness:${{ github.sha }} .
+          docker build -t aceest-fitness:latest .
+
+      - name: Verify Docker image was created
+        run: docker images aceest-fitness
+
+      - name: Save Docker image as artifact
+        run: docker save aceest-fitness:latest | gzip > aceest-fitness.tar.gz
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: aceest-fitness.tar.gz
+          retention-days: 1
+
+  # ── Stage 3: Automated Tests ──────────────────────────────────────────────────
+  test:
+    name: "Stage 3 · Automated Testing (Pytest in Container)"
+    runs-on: ubuntu-latest
+    needs: docker-build         # Only runs if Docker build passes
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load < aceest-fitness.tar.gz
+
+      - name: Run Pytest inside Docker container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/test_app.py:/app/test_app.py \
+            --entrypoint pytest \
+            aceest-fitness:latest \
+            test_app.py -v --tb=short
+
+      - name: Run Pytest with coverage report
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/test_app.py:/app/test_app.py \
+            --entrypoint python \
+            aceest-fitness:latest \
+            -m pytest test_app.py --cov=app --cov-report=term-missing -v
+
+  # ── Stage 4: Pipeline Summary ─────────────────────────────────────────────────
+  summary:
+    name: "Pipeline Complete ✅"
+    runs-on: ubuntu-latest
+    needs: [lint, docker-build, test]
+    if: success()
+
+    steps:
+      - name: Print success summary
+        run: |
+          echo "=============================================="
+          echo " ACEest CI/CD Pipeline - ALL STAGES PASSED"
+          echo "=============================================="
+          echo " ✅ Stage 1: Lint & Syntax Check"
+          echo " ✅ Stage 2: Docker Image Build"
+          echo " ✅ Stage 3: Automated Tests"
+          echo " Commit: ${{ github.sha }}"
+          echo " Branch: ${{ github.ref_name }}"
+          echo "=============================================="
