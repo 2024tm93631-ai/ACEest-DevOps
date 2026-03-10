@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// ACEest Fitness & Gym - Jenkinsfile (Declarative Pipeline)
-// Simplified pipeline using Docker agent for Python and Docker builds
+// ACEest Fitness & Gym - Jenkinsfile (Simplified Pipeline)
+// Works with basic Jenkins installation - no extra plugins needed
 // ──────────────────────────────────────────────────────────────────────────────
 
 pipeline {
@@ -15,58 +15,47 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo '=== Pulling latest code from GitHub ==='
+                echo '=== Stage 1: Pulling latest code from GitHub ==='
                 checkout scm
-                echo "Commit: ${env.GIT_COMMIT}"
-                echo "Branch: ${env.GIT_BRANCH}"
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Job Name: ${env.JOB_NAME}"
             }
         }
 
         stage('Verify Files') {
             steps {
-                echo '=== Verifying project files ==='
+                echo '=== Stage 2: Verifying project files ==='
                 sh 'ls -la'
                 sh 'cat requirements.txt'
+                echo "All required files present!"
             }
         }
 
         stage('Lint') {
-            agent {
-                docker {
-                    image 'python:3.11-slim'
-                    reuseNode true
-                }
-            }
             steps {
-                echo '=== Running flake8 lint check ==='
+                echo '=== Stage 3: Running Lint Check ==='
                 sh '''
-                    pip install flake8 --quiet
-                    flake8 app.py test_app.py --select=E9,F63,F7,F82 --show-source
-                    echo "Lint passed!"
+                    pip install flake8 --quiet --break-system-packages 2>/dev/null || pip install flake8 --quiet
+                    python -m flake8 app.py test_app.py --select=E9,F63,F7,F82 --show-source || python3 -m flake8 app.py test_app.py --select=E9,F63,F7,F82 --show-source
+                    echo "Lint check passed!"
                 '''
             }
         }
 
         stage('Unit Tests') {
-            agent {
-                docker {
-                    image 'python:3.11-slim'
-                    reuseNode true
-                }
-            }
             steps {
-                echo '=== Running pytest unit tests ==='
+                echo '=== Stage 4: Running Unit Tests ==='
                 sh '''
-                    pip install flask pytest pytest-cov --quiet
-                    pytest test_app.py -v --tb=short
-                    echo "All tests passed!"
+                    pip install flask pytest pytest-cov --quiet --break-system-packages 2>/dev/null || pip install flask pytest pytest-cov --quiet
+                    python -m pytest test_app.py -v --tb=short || python3 -m pytest test_app.py -v --tb=short
+                    echo "All unit tests passed!"
                 '''
             }
         }
 
         stage('Docker Build') {
             steps {
-                echo '=== Building Docker image ==='
+                echo '=== Stage 5: Building Docker Image ==='
                 sh "docker build -t ${IMAGE_LATEST} ."
                 sh "docker images ${APP_NAME}"
                 echo "Docker image built successfully!"
@@ -75,7 +64,7 @@ pipeline {
 
         stage('Docker Test') {
             steps {
-                echo '=== Running tests inside Docker container ==='
+                echo '=== Stage 6: Running Tests in Docker Container ==='
                 sh """
                     docker run --rm \
                         -v \$(pwd)/test_app.py:/app/test_app.py \
@@ -83,7 +72,7 @@ pipeline {
                         ${IMAGE_LATEST} \
                         test_app.py -v --tb=short
                 """
-                echo "Docker tests passed!"
+                echo "Docker container tests passed!"
             }
         }
 
@@ -95,13 +84,13 @@ pipeline {
             =============================================
              BUILD SUCCESS - ACEest CI/CD Pipeline
             =============================================
-             All stages completed successfully:
-              - Checkout
-              - Verify Files
-              - Lint
-              - Unit Tests
-              - Docker Build
-              - Docker Test
+             All stages completed:
+              - Checkout           SUCCESS
+              - Verify Files       SUCCESS
+              - Lint               SUCCESS
+              - Unit Tests         SUCCESS
+              - Docker Build       SUCCESS
+              - Docker Test        SUCCESS
             =============================================
             '''
         }
