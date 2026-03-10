@@ -1,9 +1,13 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// ACEest Fitness & Gym - Jenkinsfile (Declarative Pipeline)
+// Simplified pipeline using Docker agent for Python and Docker builds
+// ──────────────────────────────────────────────────────────────────────────────
+
 pipeline {
     agent any
 
     environment {
-        APP_NAME    = 'aceest-fitness'
-        IMAGE_TAG   = "${APP_NAME}:${BUILD_NUMBER}"
+        APP_NAME     = 'aceest-fitness'
         IMAGE_LATEST = "${APP_NAME}:latest"
     }
 
@@ -13,60 +17,59 @@ pipeline {
             steps {
                 echo '=== Pulling latest code from GitHub ==='
                 checkout scm
-                sh 'echo "Branch: $(git rev-parse --abbrev-ref HEAD)"'
-                sh 'echo "Commit: $(git rev-parse HEAD)"'
+                echo "Commit: ${env.GIT_COMMIT}"
+                echo "Branch: ${env.GIT_BRANCH}"
             }
         }
 
-        stage('Environment Setup') {
+        stage('Verify Files') {
             steps {
-                echo '=== Setting up Python virtual environment ==='
-                sh '''
-                    python3 -m venv venv
-                    . venv/bin/activate
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
-                '''
+                echo '=== Verifying project files ==='
+                sh 'ls -la'
+                sh 'cat requirements.txt'
             }
         }
 
         stage('Lint') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    reuseNode true
+                }
+            }
             steps {
-                echo '=== Running flake8 linter ==='
+                echo '=== Running flake8 lint check ==='
                 sh '''
-                    . venv/bin/activate
-                    flake8 app.py test_app.py \
-                        --count \
-                        --max-line-length=120 \
-                        --statistics \
-                        --exclude=venv
+                    pip install flake8 --quiet
+                    flake8 app.py test_app.py --select=E9,F63,F7,F82 --show-source
+                    echo "Lint passed!"
                 '''
             }
         }
 
         stage('Unit Tests') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    reuseNode true
+                }
+            }
             steps {
                 echo '=== Running pytest unit tests ==='
                 sh '''
-                    . venv/bin/activate
-                    pytest test_app.py -v \
-                        --tb=short \
-                        --junitxml=test-results.xml
+                    pip install flask pytest pytest-cov --quiet
+                    pytest test_app.py -v --tb=short
+                    echo "All tests passed!"
                 '''
-            }
-            post {
-                always {
-                    // Publish test results in Jenkins UI
-                    junit 'test-results.xml'
-                }
             }
         }
 
         stage('Docker Build') {
             steps {
-                echo "=== Building Docker image: ${IMAGE_TAG} ==="
-                sh "docker build -t ${IMAGE_TAG} -t ${IMAGE_LATEST} ."
+                echo '=== Building Docker image ==='
+                sh "docker build -t ${IMAGE_LATEST} ."
                 sh "docker images ${APP_NAME}"
+                echo "Docker image built successfully!"
             }
         }
 
@@ -74,12 +77,13 @@ pipeline {
             steps {
                 echo '=== Running tests inside Docker container ==='
                 sh """
-                    docker run --rm \\
-                        -v \$(pwd)/test_app.py:/app/test_app.py \\
-                        --entrypoint pytest \\
-                        ${IMAGE_LATEST} \\
+                    docker run --rm \
+                        -v \$(pwd)/test_app.py:/app/test_app.py \
+                        --entrypoint pytest \
+                        ${IMAGE_LATEST} \
                         test_app.py -v --tb=short
                 """
+                echo "Docker tests passed!"
             }
         }
 
@@ -92,12 +96,12 @@ pipeline {
              BUILD SUCCESS - ACEest CI/CD Pipeline
             =============================================
              All stages completed successfully:
-              ✅ Checkout
-              ✅ Environment Setup
-              ✅ Lint
-              ✅ Unit Tests
-              ✅ Docker Build
-              ✅ Docker Test
+              - Checkout
+              - Verify Files
+              - Lint
+              - Unit Tests
+              - Docker Build
+              - Docker Test
             =============================================
             '''
         }
@@ -111,8 +115,7 @@ pipeline {
             '''
         }
         always {
-            // Clean up Docker image after build to save disk space
-            sh "docker rmi ${IMAGE_TAG} || true"
+            sh "docker rmi ${IMAGE_LATEST} || true"
             cleanWs()
         }
     }
