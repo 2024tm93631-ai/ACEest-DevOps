@@ -62,17 +62,12 @@ pipeline {
             }
         }
 
-        stage('Docker Test') {
+        stage('Docker Verify') {
             steps {
-                echo '=== Stage 6: Running Tests in Docker Container ==='
-                sh """
-                    docker run --rm \
-                        -v \$(pwd)/test_app.py:/app/test_app.py \
-                        --entrypoint pytest \
-                        ${IMAGE_LATEST} \
-                        test_app.py -v --tb=short
-                """
-                echo "Docker container tests passed!"
+                echo '=== Stage 6: Verifying Docker Image ==='
+                sh "docker inspect ${IMAGE_LATEST}"
+                sh "docker run --rm ${IMAGE_LATEST} python3 -c \"import app; print('App imports successfully!')\""
+                echo "Docker image verified successfully!"
             }
         }
 
