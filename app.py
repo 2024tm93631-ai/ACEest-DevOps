@@ -1,232 +1,133 @@
-from flask import Flask, jsonify, request, abort
+# app.py - ACEest Fitness & Gym REST API v3.0
+# Assignment 2 - Version 3.0 (Latest)
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# ─── Data Store ───────────────────────────────────────────────────────────────
+# ── In-memory store ──────────────────────────────────────────
+members = {}
 
 PROGRAMS = {
-    "Fat Loss (FL)": {
-        "code": "FL",
-        "workout": [
-            "Mon: Back Squat 5x5 + Core",
-            "Tue: EMOM 20min Assault Bike",
-            "Wed: Bench Press + 21-15-9",
-            "Thu: Deadlift + Box Jumps",
-            "Fri: Zone 2 Cardio 30min"
-        ],
-        "diet": {
-            "breakfast": "Egg Whites + Oats",
-            "lunch": "Grilled Chicken + Brown Rice",
-            "dinner": "Fish Curry + Millet Roti",
-            "target_kcal": 2000
-        },
+    "Fat Loss": {
+        "short_code": "FL",
         "calorie_factor": 22,
-        "color": "#e74c3c"
+        "workout": "Mon: 5x5 Back Squat + AMRAP\nTue: EMOM 20min Assault Bike\nWed: Bench Press + 21-15-9\nThu: 10RFT Deadlifts/Box Jumps\nFri: 30min Active Recovery",
+        "nutrition": "B: 3 Egg Whites + Oats Idli\nL: Grilled Chicken + Brown Rice\nD: Fish Curry + Millet Roti\nTarget: 2,000 kcal"
     },
-    "Muscle Gain (MG)": {
-        "code": "MG",
-        "workout": [
-            "Mon: Squat 5x5",
-            "Tue: Bench 5x5",
-            "Wed: Deadlift 4x6",
-            "Thu: Front Squat 4x8",
-            "Fri: Incline Press 4x10",
-            "Sat: Barbell Rows 4x10"
-        ],
-        "diet": {
-            "breakfast": "Eggs + Peanut Butter Oats",
-            "lunch": "Chicken Biryani (250g Chicken)",
-            "dinner": "Mutton Curry + Jeera Rice",
-            "target_kcal": 3200
-        },
+    "Muscle Gain": {
+        "short_code": "MG",
         "calorie_factor": 35,
-        "color": "#2ecc71"
+        "workout": "Mon: Squat 5x5\nTue: Bench 5x5\nWed: Deadlift 4x6\nThu: Front Squat 4x8\nFri: Incline Press 4x10\nSat: Barbell Rows 4x10",
+        "nutrition": "B: 4 Eggs + PB Oats\nL: Chicken Biryani (250g Chicken)\nD: Mutton Curry + Jeera Rice\nTarget: 3,200 kcal"
     },
-    "Beginner (BG)": {
-        "code": "BG",
-        "workout": [
-            "Full Body Circuit: Air Squats",
-            "Ring Rows",
-            "Push-ups",
-            "Focus: Technique & Consistency"
-        ],
-        "diet": {
-            "breakfast": "Idli / Dosa with Sambar",
-            "lunch": "Rice + Dal + Vegetables",
-            "dinner": "Chapati + Curry",
-            "target_kcal": 2200
-        },
+    "Beginner Gym": {
+        "short_code": "BG",
         "calorie_factor": 26,
-        "color": "#3498db"
+        "workout": "Circuit Training: Air Squats, Ring Rows, Push-ups.\nFocus: Technique Mastery & Form (90% Threshold)",
+        "nutrition": "Balanced Tamil Meals: Idli-Sambar, Rice-Dal, Chapati.\nProtein: 120g/day"
     }
 }
 
-# In-memory member store (simulates database)
-members = {}
+APP_VERSION = "3.0.0"
 
+# ── Helper ───────────────────────────────────────────────────
+def find_program(name):
+    name_lower = name.lower()
+    for prog_name, prog_data in PROGRAMS.items():
+        if (prog_name.lower() == name_lower or
+                prog_data["short_code"].lower() == name_lower):
+            return prog_name, prog_data
+    return None, None
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
-
+# ── Routes ───────────────────────────────────────────────────
 @app.route("/")
 def home():
-    """Home endpoint - returns API info."""
     return jsonify({
-        "app": "ACEest Fitness & Gym",
-        "version": "2.0",
-        "description": "Automated CI/CD Pipeline Demo - DevOps Assignment",
-        "endpoints": {
-            "GET /": "This info page",
-            "GET /health": "Health check",
-            "GET /programs": "List all fitness programs",
-            "GET /programs/<name>": "Get a specific program details",
-            "GET /calories/<program>/<weight>": "Calculate calories for weight (kg)",
-            "POST /members": "Register a new member",
-            "GET /members": "List all members",
-            "GET /members/<name>": "Get a specific member"
-        }
+        "service": "ACEest Fitness & Gym API",
+        "version": APP_VERSION,
+        "status": "running",
+        "endpoints": [
+            "GET /health",
+            "GET /version",
+            "GET /programs",
+            "GET /programs/<name>",
+            "GET /calories/<program>/<weight>",
+            "POST /members",
+            "GET /members",
+            "GET /members/<name>"
+        ]
     })
-
 
 @app.route("/health")
 def health():
-    """Health check for CI/CD pipeline."""
-    return jsonify({"status": "healthy", "service": "aceest-fitness-api"}), 200
+    return jsonify({"status": "healthy", "service": "aceest-fitness-api", "version": APP_VERSION})
 
+@app.route("/version")
+def version():
+    return jsonify({"version": APP_VERSION, "app": "ACEest Fitness & Gym"})
 
 @app.route("/programs")
 def get_programs():
-    """Return all available fitness programs."""
-    summary = []
-    for name, data in PROGRAMS.items():
-        summary.append({
-            "name": name,
-            "code": data["code"],
-            "calorie_factor": data["calorie_factor"],
-            "target_kcal": data["diet"]["target_kcal"]
-        })
-    return jsonify({"programs": summary, "total": len(summary)})
+    return jsonify({"programs": list(PROGRAMS.keys()), "count": len(PROGRAMS)})
 
+@app.route("/programs/<name>")
+def get_program(name):
+    prog_name, prog_data = find_program(name)
+    if not prog_name:
+        return jsonify({"error": f"Program '{name}' not found"}), 404
+    return jsonify({"program": prog_name, **prog_data})
 
-@app.route("/programs/<string:program_name>")
-def get_program(program_name):
-    """Return details of a specific program."""
-    # Support both full name and short code (FL, MG, BG)
-    matched = None
-    for name, data in PROGRAMS.items():
-        if (name.lower() == program_name.lower() or
-                data["code"].lower() == program_name.lower()):
-            matched = (name, data)
-            break
-
-    if not matched:
-        abort(404, description=f"Program '{program_name}' not found.")
-
-    name, data = matched
-    return jsonify({
-        "name": name,
-        "code": data["code"],
-        "workout_plan": data["workout"],
-        "nutrition_plan": data["diet"],
-        "calorie_factor": data["calorie_factor"]
-    })
-
-
-@app.route("/calories/<string:program_name>/<float:weight_kg>")
-def calculate_calories(program_name, weight_kg):
-    """Calculate estimated daily calories for a given program and body weight."""
+@app.route("/calories/<program>/<weight>")
+def calculate_calories(program, weight):
+    try:
+        weight_kg = float(weight)
+    except ValueError:
+        return jsonify({"error": "Weight must be a number"}), 400
     if weight_kg <= 0 or weight_kg > 300:
-        abort(400, description="Weight must be between 1 and 300 kg.")
-
-    matched = None
-    for name, data in PROGRAMS.items():
-        if (name.lower() == program_name.lower() or
-                data["code"].lower() == program_name.lower()):
-            matched = (name, data)
-            break
-
-    if not matched:
-        abort(404, description=f"Program '{program_name}' not found.")
-
-    name, data = matched
-    estimated_calories = int(weight_kg * data["calorie_factor"])
+        return jsonify({"error": "Weight must be between 1 and 300 kg"}), 400
+    prog_name, prog_data = find_program(program)
+    if not prog_name:
+        return jsonify({"error": f"Program '{program}' not found"}), 404
+    calories = round(weight_kg * prog_data["calorie_factor"])
     return jsonify({
-        "program": name,
+        "program": prog_name,
         "weight_kg": weight_kg,
-        "estimated_daily_calories": estimated_calories
+        "daily_calories": calories,
+        "calorie_factor": prog_data["calorie_factor"]
     })
-
 
 @app.route("/members", methods=["POST"])
 def add_member():
-    """Register a new gym member."""
-    body = request.get_json()
-    if not body:
-        abort(400, description="Request body must be JSON.")
-
-    required = ["name", "age", "weight_kg", "program"]
-    for field in required:
-        if field not in body:
-            abort(400, description=f"Missing required field: '{field}'")
-
-    name = body["name"].strip()
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+    data = request.get_json()
+    name = data.get("name", "").strip()
+    program = data.get("program", "").strip()
     if not name:
-        abort(400, description="Member name cannot be empty.")
-
+        return jsonify({"error": "name is required"}), 400
+    if not program:
+        return jsonify({"error": "program is required"}), 400
+    prog_name, _ = find_program(program)
+    if not prog_name:
+        return jsonify({"error": f"Program '{program}' not found"}), 400
     if name in members:
-        abort(409, description=f"Member '{name}' already exists.")
+        return jsonify({"error": f"Member '{name}' already exists"}), 409
+    members[name] = {"name": name, "program": prog_name}
+    return jsonify({"message": f"Member '{name}' registered successfully", "member": members[name]}), 201
 
-    # Validate program
-    program_valid = any(
-        p.lower() == body["program"].lower() or
-        PROGRAMS[p]["code"].lower() == body["program"].lower()
-        for p in PROGRAMS
-    )
-    if not program_valid:
-        abort(400, description=f"Invalid program: '{body['program']}'")
-
-    members[name] = {
-        "name": name,
-        "age": body["age"],
-        "weight_kg": body["weight_kg"],
-        "program": body["program"],
-        "adherence_percent": body.get("adherence_percent", 0)
-    }
-
-    return jsonify({"message": f"Member '{name}' registered successfully.", "member": members[name]}), 201
-
-
-@app.route("/members", methods=["GET"])
+@app.route("/members")
 def get_members():
-    """List all registered members."""
-    return jsonify({"members": list(members.values()), "total": len(members)})
+    return jsonify({"members": list(members.values()), "count": len(members)})
 
-
-@app.route("/members/<string:name>", methods=["GET"])
+@app.route("/members/<name>")
 def get_member(name):
-    """Get details of a specific member."""
     if name not in members:
-        abort(404, description=f"Member '{name}' not found.")
+        return jsonify({"error": f"Member '{name}' not found"}), 404
     return jsonify(members[name])
-
-
-# ─── Error Handlers ───────────────────────────────────────────────────────────
-
-@app.errorhandler(400)
-def bad_request(e):
-    return jsonify({"error": "Bad Request", "message": str(e.description)}), 400
-
 
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify({"error": "Not Found", "message": str(e.description)}), 404
-
-
-@app.errorhandler(409)
-def conflict(e):
-    return jsonify({"error": "Conflict", "message": str(e.description)}), 409
-
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
+    return jsonify({"error": "Endpoint not found"}), 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
